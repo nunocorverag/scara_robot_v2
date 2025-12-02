@@ -19,92 +19,152 @@ unsigned long lastPrint = 0;
 // --- Configuración de PWM ---
 const int PWM_FREQ = 20000;     // Frecuencia de PWM (20 kHz)
 const int PWM_RESOLUTION = 8;   // Resolución de 8 bits (valores de 0 a 255)
+const int MAX_PWM = 255;        // Valor máximo de PWM (para 8 bits)
+const int MIN_PWM = 0;          // Valor mínimo de PWM (0)
 
-// --- Configuración de Control de Posición ---
-const int PWM_SPEED = 100;      // Velocidad lenta para el movimiento de retorno
+// --- Configuración de Control de Posición y Velocidad ---
+int PWM_SPEED = 100;            // VELOCIDAD BASE AJUSTABLE (PWM de 0 a 255)
+const int TINY_SPEED_PWM = 160; // Velocidad fija para los movimientos 'a' y 'd'
 const long TOLERANCE = 10;      // Margen de error para considerar alcanzado el "cero" (en ticks)
 
+// Variables para almacenar el estado previo (mejor lectura)
+volatile int lastEncA = 0;
+volatile int lastEncB = 0;
+
 // ---------------------------------------
-// Rutina de Servicio de Interrupción (ISR) - Lógica de Cuadratura CORREGIDA
+// Rutina de Servicio de Interrupción (ISR) - CORREGIDA
 // ---------------------------------------
 void IRAM_ATTR encoderISR() {
-  // Leemos el estado del Pin B en el momento exacto en que A cambia.
-  int estadoB = digitalRead(ENC_B);
+  int currentA = digitalRead(ENC_A);
+  int currentB = digitalRead(ENC_B);
   
-  // Si A y B son diferentes (A=LOW, B=HIGH o A=HIGH, B=LOW), el conteo es positivo.
-  if (digitalRead(ENC_A) != estadoB) {
-    encoderCount++; 
-  } 
-  // Si A y B son iguales, el conteo es negativo.
-  else {
-    encoderCount--; 
+  // Tabla de estados para decodificación cuadratura
+  // Si A y B cambian en sentido horario: incrementa
+  // Si A y B cambian en sentido antihorario: decrementa
+  
+  if (lastEncA == LOW && currentA == HIGH) {
+    // Flanco de subida en A
+    if (currentB == LOW) {
+      encoderCount++;  // Giro en una dirección
+    } else {
+      encoderCount--;  // Giro en dirección opuesta
+    }
   }
+  else if (lastEncA == HIGH && currentA == LOW) {
+    // Flanco de bajada en A
+    if (currentB == HIGH) {
+      encoderCount++;  // Giro en una dirección
+    } else {
+      encoderCount--;  // Giro en dirección opuesta
+    }
+  }
+  
+  lastEncA = currentA;
+  lastEncB = currentB;
 }
+
+// Si la dirección sigue invertida, usa esta versión alternativa:
+/*
+void IRAM_ATTR encoderISR() {
+  int currentA = digitalRead(ENC_A);
+  int currentB = digitalRead(ENC_B);
+  
+  if (lastEncA == LOW && currentA == HIGH) {
+    if (currentB == HIGH) {  // INVERTIDO
+      encoderCount++;
+    } else {
+      encoderCount--;
+    }
+  }
+  else if (lastEncA == HIGH && currentA == LOW) {
+    if (currentB == LOW) {  // INVERTIDO
+      encoderCount++;
+    } else {
+      encoderCount--;
+    }
+  }
+  
+  lastEncA = currentA;
+  lastEncB = currentB;
+}
+*/
 
 // ---------------------------------------
 // Funciones de Movimiento
 // ---------------------------------------
 
+void setMotorSpeed(int speed) {
+  ledcWrite(ENA, speed); 
+}
+
 void motorForwardTiny() {
   Serial.println("Movimiento Positivo (+)");
   digitalWrite(IN1, HIGH);
   digitalWrite(IN2, LOW);
-  analogWrite(ENA, 160);
+  setMotorSpeed(TINY_SPEED_PWM); 
   delay(100);            
-  analogWrite(ENA, 0);   
+  setMotorSpeed(0);   
 }
 
 void motorBackwardTiny() {
   Serial.println("Movimiento Negativo (-)");
   digitalWrite(IN1, LOW);
   digitalWrite(IN2, HIGH);
-  analogWrite(ENA, 160);
+  setMotorSpeed(TINY_SPEED_PWM); 
   delay(100);
-  analogWrite(ENA, 0);
+  setMotorSpeed(0);
 }
 
 void motorStop() {
   digitalWrite(IN1, LOW);
   digitalWrite(IN2, LOW);
-  analogWrite(ENA, 0); 
+  setMotorSpeed(0); 
 }
 
 // ---------------------------------------
-// Función para ir a Posición Cero (Control Básico de Posición)
+// Función para ir a Posición Cero - MEJORADA
 // ---------------------------------------
 void returnToZero() {
-  const long TARGET_TICKS = 0; // El cero es la última posición donde se presionó 'r'
+  const long TARGET_TICKS = 0; 
   long currentTicks;
+  long lastTicks = encoderCount;
+  unsigned long stuckTime = 0;
+  const unsigned long STUCK_TIMEOUT = 2000; // 2 segundos sin cambio = atascado
 
-  Serial.println("Iniciando movimiento a Posición Cero...");
+  Serial.print("Iniciando movimiento a Posición Cero. Velocidad actual: ");
+  Serial.println(PWM_SPEED);
 
-  // Bucle de control: se ejecuta mientras estemos fuera de la tolerancia
-  // abs() calcula el valor absoluto de la diferencia.
   while (abs(encoderCount - TARGET_TICKS) > TOLERANCE) {
     
-    // Lectura segura del contador
     noInterrupts();
     currentTicks = encoderCount;
     interrupts();
 
-    // Lógica para mover el motor en la dirección correcta
+    // Detectar si está atascado
+    if (currentTicks == lastTicks) {
+      if (stuckTime == 0) {
+        stuckTime = millis();
+      } else if (millis() - stuckTime > STUCK_TIMEOUT) {
+        Serial.println("ADVERTENCIA: Motor atascado o sin movimiento. Abortando...");
+        break;
+      }
+    } else {
+      stuckTime = 0; // Reiniciar timeout si hay movimiento
+      lastTicks = currentTicks;
+    }
+
     if (currentTicks > TARGET_TICKS) {
-      // Si estamos en un valor positivo, debemos movernos hacia atrás (Decremento)
       digitalWrite(IN1, LOW);
       digitalWrite(IN2, HIGH);
-      analogWrite(ENA, PWM_SPEED);
+      setMotorSpeed(PWM_SPEED);
     } 
     else if (currentTicks < TARGET_TICKS) {
-      // Si estamos en un valor negativo, debemos movernos hacia adelante (Incremento)
       digitalWrite(IN1, HIGH);
       digitalWrite(IN2, LOW);
-      analogWrite(ENA, PWM_SPEED);
+      setMotorSpeed(PWM_SPEED);
     }
     
-    // Imprime la posición en tiempo real para seguimiento
     Serial.print("Ticks: "); Serial.println(currentTicks);
-
-    // Pequeña pausa para permitir que el bucle se ejecute
     delay(10); 
   }
 
@@ -112,37 +172,39 @@ void returnToZero() {
   Serial.print("Posición Cero alcanzada. Ticks finales: "); Serial.println(encoderCount);
 }
 
-
 // ---------------------------------------
-// Setup
+// Setup - MEJORADO
 // ---------------------------------------
 void setup() {
   Serial.begin(115200);
 
-  // 1. Configuración de Pines de Control de Dirección
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
 
-  // 2. Configuración de Pines del Encoder: Usar PULLUP para evitar ruido.
   pinMode(ENC_A, INPUT_PULLUP);
   pinMode(ENC_B, INPUT_PULLUP);
 
-  // 3. Configuración del PWM (Compatible con versiones antiguas del Core)
-  // ledcAttach asocia el pin ENA a un canal de PWM con la Frecuencia y Resolución.
+  // Leer estados iniciales
+  lastEncA = digitalRead(ENC_A);
+  lastEncB = digitalRead(ENC_B);
+
+  // Configuración del PWM (para ESP32)
   ledcAttach(ENA, PWM_FREQ, PWM_RESOLUTION); 
   
-  // 4. Configuración de la Interrupción
   attachInterrupt(digitalPinToInterrupt(ENC_A), encoderISR, CHANGE);
 
   motorStop();
 
-  Serial.println("=== SCARA Motor Test (Control de Posición) ===");
+  Serial.println("=== SCARA Motor Test (Control de Posición y Velocidad Manual) ===");
   Serial.println("Controles:");
   Serial.println("  d = paso adelante (+)");
   Serial.println("  a = paso atrás (-)");
-  Serial.println("  0 = IR A POSICIÓN CERO (último 'r')");
+  Serial.println("  0 = IR A POSICIÓN CERO (usa la velocidad ajustable)");
   Serial.println("  r = reiniciar encoder (establecer POSICIÓN CERO)");
+  Serial.println("  p[XXX] = ESTABLECER PWM MANUALMENTE (ej: p150, p255, p0)");
+  Serial.println("  i = INVERTIR dirección del encoder");
   Serial.println("----------------------------------------");
+  Serial.print("Velocidad PWM inicial: "); Serial.println(PWM_SPEED);
 }
 
 // ---------------------------------------
@@ -158,32 +220,55 @@ void loop() {
     interrupts();
     
     Serial.print("Encoder = ");
-    Serial.println(val);
+    Serial.print(val);
+    Serial.print(" | PWM Actual = ");
+    Serial.println(PWM_SPEED);
   }
 
   // Leer comandos del usuario
   if (Serial.available()) {
-    char c = Serial.read();
-    while (Serial.available()) Serial.read(); // limpiar buffer
+    char command = Serial.read();
     
-    if (c == 'd') {
+    if (command == 'd') {
       motorForwardTiny();
     }
-    else if (c == 'a') {
+    else if (command == 'a') {
       motorBackwardTiny();
     }
-    else if (c == 's') {
-      motorStop();
-      Serial.println("Motor detenido.");
-    }
-    else if (c == 'r') {
+    else if (command == 'r') {
       noInterrupts();
-      encoderCount = 0; // ESTABLECE el nuevo CERO (0)
+      encoderCount = 0; 
       interrupts();
       Serial.println("POSICIÓN CERO establecida.");
     }
-    else if (c == '0') {
-      returnToZero(); // MUEVE el motor a la última posición CERO
+    else if (command == '0') {
+      returnToZero(); 
+    }
+    else if (command == 'p') {
+      int newPwm = -1;
+      
+      if (Serial.peek() >= '0' && Serial.peek() <= '9') {
+        newPwm = Serial.parseInt();
+      }
+      
+      while (Serial.available()) {
+        Serial.read();
+      }
+      
+      if (newPwm >= MIN_PWM && newPwm <= MAX_PWM) {
+        PWM_SPEED = newPwm;
+        Serial.print("PWM establecido. Nueva velocidad: ");
+        Serial.println(PWM_SPEED);
+      } else {
+        Serial.print("Error: Valor PWM (");
+        Serial.print(newPwm);
+        Serial.println(") fuera del rango 0-255. Intente: p150.");
+      }
+    } 
+    else {
+      while (Serial.available()) {
+        Serial.read();
+      }
     }
   }
 }
