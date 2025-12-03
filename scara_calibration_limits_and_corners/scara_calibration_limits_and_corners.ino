@@ -26,7 +26,7 @@ const float M1_TOLERANCE_MARGIN = 10.0;
 #define M2_ENC_B 33
 
 const float M2_MIN_ANGLE = 75.0;
-const float M2_MAX_ANGLE = 105.0;
+const float M2_MAX_ANGLE = 120.0;
 const float M2_TICKS_PER_DEGREE = 2.743;
 const float M2_REFERENCE_ANGLE = 90.0;
 const int M2_MIN_PWM = 150;
@@ -38,7 +38,7 @@ const float M2_TOLERANCE_MARGIN = 10.0;
 const int PWM_FREQ = 20000;
 const int PWM_RESOLUTION = 8;
 const int MAX_PWM = 255;
-const long TOLERANCE = 15;
+const long TOLERANCE = 5;
 
 // Encoders
 volatile long m1_encoderCount = 0;
@@ -532,19 +532,19 @@ void processCommand(String cmd) {
     mapCorners();
   }
   else if (cmd == "c1") {
-    goToPositionSequential(M1_MIN_ANGLE, M2_MIN_ANGLE);
+    goToPositionSequential(77, 85.6);
   }
   else if (cmd == "c2") {
-    goToPosition(M1_MAX_ANGLE, M2_MIN_ANGLE);
+    goToPosition(103.3, 69.6);
   }
   else if (cmd == "c3") {
-    goToPositionSequential(M1_MAX_ANGLE, M2_MAX_ANGLE);
+    goToPositionSequential(103.3, 95.5);
   }
   else if (cmd == "c4") {
-    goToPosition(M1_MIN_ANGLE, M2_MAX_ANGLE);
+    goToPosition(79.2, 116.2);
   }
   else if (cmd == "home" || cmd == "0") {
-    goToPosition(M1_REFERENCE_ANGLE, M2_REFERENCE_ANGLE);
+    goToPosition(90, 90);
   }
   else if (cmd == "r1") {
     noInterrupts();
