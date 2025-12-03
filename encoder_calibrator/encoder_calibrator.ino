@@ -3,15 +3,15 @@
 // ---------------------------
 // Pines del Motor 1 (Potencia y Control L298N)
 // ---------------------------
-#define IN1 25     // L298N IN1 -> Dirección 1
-#define IN2 26     // L298N IN2 -> Dirección 2
-#define ENA 27     // L298N ENA -> PWM Velocidad
+#define IN1 14     // L298N IN1 -> Dirección 1
+#define IN2 12     // L298N IN2 -> Dirección 2
+#define ENA 13    // L298N ENA -> PWM Velocidad
 
 // ---------------------------
 // Pines ENCODER 1
 // ---------------------------
-#define ENC_A 34   // Encoder Fase A (Interrupción)
-#define ENC_B 35   // Encoder Fase B (Lectura de Dirección)
+#define ENC_A 32   // Encoder Fase A (Interrupción)
+#define ENC_B 33   // Encoder Fase B (Lectura de Dirección)
 
 volatile long encoderCount = 0; // Contador de pulsos del encoder
 unsigned long lastPrint = 0;
@@ -24,10 +24,11 @@ const int MIN_PWM = 0;          // Valor mínimo de PWM (0)
 
 // --- Configuración de Control de Posición y Velocidad ---
 int PWM_SPEED = 160;            // VELOCIDAD BASE AJUSTABLE (PWM de 0 a 255)
-const int TINY_SPEED_PWM = 160; // Velocidad fija para los movimientos 'a' y 'd'
+const int TINY_SPEED_PWM = 150; // Velocidad fija para los movimientos 'a' y 'd'
 const long TOLERANCE = 10;      // Margen de error para considerar alcanzado el "cero" (en ticks)
 
 // Variables para almacenar el estado previo (mejor lectura)
+#define ENA 27     // L298N ENA -> PWM Velocid
 volatile int lastEncA = 0;
 volatile int lastEncB = 0;
 
