@@ -23,7 +23,7 @@ const int MAX_PWM = 255;        // Valor máximo de PWM (para 8 bits)
 const int MIN_PWM = 0;          // Valor mínimo de PWM (0)
 
 // --- Configuración de Control de Posición y Velocidad ---
-int PWM_SPEED = 100;            // VELOCIDAD BASE AJUSTABLE (PWM de 0 a 255)
+int PWM_SPEED = 160;            // VELOCIDAD BASE AJUSTABLE (PWM de 0 a 255)
 const int TINY_SPEED_PWM = 160; // Velocidad fija para los movimientos 'a' y 'd'
 const long TOLERANCE = 10;      // Margen de error para considerar alcanzado el "cero" (en ticks)
 
