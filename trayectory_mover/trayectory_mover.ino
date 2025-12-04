@@ -45,10 +45,10 @@ const float XY_TOLERANCE = 0.3;  // cm
 // ============================================
 // ESPACIO DE TRABAJO
 // ============================================
-const float WS_X_MIN = 0.0;
-const float WS_X_MAX = 8.5;
-const float WS_Y_MIN = 0.0;
-const float WS_Y_MAX = 5.8;
+const float WS_X_MIN = -5.0;
+const float WS_X_MAX = 5.0;
+const float WS_Y_MIN = -5.0;
+const float WS_Y_MAX = 5.0;
 
 // Variables globales
 volatile long m1_encoderCount = 0;
@@ -86,20 +86,18 @@ struct CalibPoint {
   float y;
 };
 
-// Puntos calibrados del workspace
+// Puntos calibrados del workspace (centrados en origen -5 a 5)
 CalibPoint calibPoints[4] = {
-  {77.0,  85.6,  0.0,  0.0},  // c1: esquina inferior izquierda
-  {103.3, 69.6,  8.5,  0.0},  // c2: esquina inferior derecha
-  {103.3, 95.5,  8.5,  5.8},  // c3: esquina superior derecha
-  {79.2,  116.2, 0.0,  5.8}   // c4: esquina superior izquierda
+  {77.0,  85.6,  -5.0,  -5.0},  // c1: abajo izquierda
+  {103.3, 69.6,   5.0,  -5.0},  // c2: abajo derecha
+  {103.3, 95.5,   5.0,   5.0},  // c3: arriba derecha
+  {79.2,  116.2, -5.0,   5.0}   // c4: arriba izquierda
 };
 
 // ============================================
 // CINEMÁTICA INVERSA CON INTERPOLACIÓN
 // ============================================
 bool inverseKinematicsCalibrated(float x, float y, float& theta1, float& theta2) {
-  // Método: Interpolación bilineal basada en puntos de calibración
-  
   // Validar límites del workspace
   if (x < WS_X_MIN || x > WS_X_MAX || y < WS_Y_MIN || y > WS_Y_MAX) {
     Serial.print("❌ Fuera de workspace: (");
@@ -111,64 +109,23 @@ bool inverseKinematicsCalibrated(float x, float y, float& theta1, float& theta2)
   float x_norm = (x - WS_X_MIN) / (WS_X_MAX - WS_X_MIN);
   float y_norm = (y - WS_Y_MIN) / (WS_Y_MAX - WS_Y_MIN);
   
-  // Interpolación bilineal para theta1 y theta2
-  // Dividimos el workspace en 4 cuadrantes
+  // Interpolación bilineal correcta
+  // Mapeo de índices: c1(0,0)=0  c2(1,0)=1  c3(1,1)=2  c4(0,1)=3
+  // calibPoints[0] = {77.0,  85.6,  0.0,  0.0}  // c1
+  // calibPoints[1] = {103.3, 69.6,  8.5,  0.0}  // c2
+  // calibPoints[2] = {103.3, 95.5,  8.5,  5.8}  // c3
+  // calibPoints[3] = {79.2,  116.2, 0.0,  5.8}  // c4
   
   float t1, t2;
   
-  if (x_norm <= 0.5 && y_norm <= 0.5) {
-    // Cuadrante inferior izquierdo (c1)
-    float fx = x_norm * 2.0;
-    float fy = y_norm * 2.0;
-    
-    // Interpolar entre c1 y vecinos
-    float t1_x0 = calibPoints[0].m1_angle * (1 - fx) + calibPoints[1].m1_angle * fx;
-    float t1_x1 = calibPoints[3].m1_angle * (1 - fx) + calibPoints[2].m1_angle * fx;
-    t1 = t1_x0 * (1 - fy) + t1_x1 * fy;
-    
-    float t2_x0 = calibPoints[0].m2_angle * (1 - fx) + calibPoints[1].m2_angle * fx;
-    float t2_x1 = calibPoints[3].m2_angle * (1 - fx) + calibPoints[2].m2_angle * fx;
-    t2 = t2_x0 * (1 - fy) + t2_x1 * fy;
-  }
-  else if (x_norm > 0.5 && y_norm <= 0.5) {
-    // Cuadrante inferior derecho (c2)
-    float fx = (x_norm - 0.5) * 2.0;
-    float fy = y_norm * 2.0;
-    
-    float t1_x0 = calibPoints[1].m1_angle * (1 - fx) + calibPoints[1].m1_angle * fx;
-    float t1_x1 = calibPoints[2].m1_angle * (1 - fx) + calibPoints[2].m1_angle * fx;
-    t1 = t1_x0 * (1 - fy) + t1_x1 * fy;
-    
-    float t2_x0 = calibPoints[1].m2_angle * (1 - fx) + calibPoints[1].m2_angle * fx;
-    float t2_x1 = calibPoints[2].m2_angle * (1 - fx) + calibPoints[2].m2_angle * fx;
-    t2 = t2_x0 * (1 - fy) + t2_x1 * fy;
-  }
-  else if (x_norm <= 0.5 && y_norm > 0.5) {
-    // Cuadrante superior izquierdo (c4)
-    float fx = x_norm * 2.0;
-    float fy = (y_norm - 0.5) * 2.0;
-    
-    float t1_x0 = calibPoints[0].m1_angle * (1 - fx) + calibPoints[1].m1_angle * fx;
-    float t1_x1 = calibPoints[3].m1_angle * (1 - fx) + calibPoints[2].m1_angle * fx;
-    t1 = t1_x0 * (1 - fy) + t1_x1 * fy;
-    
-    float t2_x0 = calibPoints[0].m2_angle * (1 - fx) + calibPoints[1].m2_angle * fx;
-    float t2_x1 = calibPoints[3].m2_angle * (1 - fx) + calibPoints[2].m2_angle * fx;
-    t2 = t2_x0 * (1 - fy) + t2_x1 * fy;
-  }
-  else {
-    // Cuadrante superior derecho (c3)
-    float fx = (x_norm - 0.5) * 2.0;
-    float fy = (y_norm - 0.5) * 2.0;
-    
-    float t1_x0 = calibPoints[1].m1_angle * (1 - fx) + calibPoints[1].m1_angle * fx;
-    float t1_x1 = calibPoints[2].m1_angle * (1 - fx) + calibPoints[2].m1_angle * fx;
-    t1 = t1_x0 * (1 - fy) + t1_x1 * fy;
-    
-    float t2_x0 = calibPoints[1].m2_angle * (1 - fx) + calibPoints[1].m2_angle * fx;
-    float t2_x1 = calibPoints[2].m2_angle * (1 - fx) + calibPoints[2].m2_angle * fx;
-    t2 = t2_x0 * (1 - fy) + t2_x1 * fy;
-  }
+  // Interpolación en eje X (entre c1-c2 abajo y c4-c3 arriba)
+  float t1_bottom = calibPoints[0].m1_angle * (1 - x_norm) + calibPoints[1].m1_angle * x_norm;
+  float t1_top = calibPoints[3].m1_angle * (1 - x_norm) + calibPoints[2].m1_angle * x_norm;
+  t1 = t1_bottom * (1 - y_norm) + t1_top * y_norm;
+  
+  float t2_bottom = calibPoints[0].m2_angle * (1 - x_norm) + calibPoints[1].m2_angle * x_norm;
+  float t2_top = calibPoints[3].m2_angle * (1 - x_norm) + calibPoints[2].m2_angle * x_norm;
+  t2 = t2_bottom * (1 - y_norm) + t2_top * y_norm;
   
   // Validar límites
   if (t1 < M1_MIN_ANGLE || t1 > M1_MAX_ANGLE) {
@@ -191,14 +148,13 @@ bool inverseKinematicsCalibrated(float x, float y, float& theta1, float& theta2)
 // CINEMÁTICA DIRECTA CON CALIBRACIÓN
 // ============================================
 void forwardKinematicsCalibrated(float theta1, float theta2, float& x, float& y) {
-  // Usar interpolación inversa basada en puntos conocidos
-  // Buscar en qué cuadrante caen los ángulos y interpolar XY
+  // Interpolación inversa: dado ángulos, encontrar XY
+  // Usando los 4 puntos calibrados
   
   x = 0;
   y = 0;
-  bool found = false;
   
-  // Buscar los 4 puntos más cercanos
+  // Buscar el punto más cercano
   float min_dist = 999999;
   int closest_idx = 0;
   
@@ -213,32 +169,34 @@ void forwardKinematicsCalibrated(float theta1, float theta2, float& x, float& y)
     }
   }
   
-  // Si está muy cerca de un punto calibrado, usar ese
-  if (min_dist < 2.0) {
+  // Si está muy cerca de un punto calibrado, usar ese exactamente
+  if (min_dist < 1.5) {
     x = calibPoints[closest_idx].x;
     y = calibPoints[closest_idx].y;
     return;
   }
   
-  // Interpolar entre dos puntos cercanos
-  float t1_error_best = 999;
-  float t2_error_best = 999;
-  int idx_best = 0;
+  // Si no, interpolar entre puntos cercanos
+  // Calcular distancias ponderadas a los 4 puntos
+  float weights[4];
+  float total_weight = 0;
   
   for (int i = 0; i < 4; i++) {
-    float e1 = abs(calibPoints[i].m1_angle - theta1);
-    float e2 = abs(calibPoints[i].m2_angle - theta2);
+    float d1 = abs(calibPoints[i].m1_angle - theta1);
+    float d2 = abs(calibPoints[i].m2_angle - theta2);
+    float dist = sqrt(d1*d1 + d2*d2);
     
-    if (e1 + e2 < t1_error_best + t2_error_best) {
-      t1_error_best = e1;
-      t2_error_best = e2;
-      idx_best = i;
-    }
+    // Peso inversamente proporcional a la distancia
+    weights[i] = 1.0 / (dist + 0.1);  // +0.1 para evitar división por 0
+    total_weight += weights[i];
   }
   
-  // Usar el punto más cercano como aproximación
-  x = calibPoints[idx_best].x;
-  y = calibPoints[idx_best].y;
+  // Interpolación ponderada
+  for (int i = 0; i < 4; i++) {
+    float w = weights[i] / total_weight;
+    x += calibPoints[i].x * w;
+    y += calibPoints[i].y * w;
+  }
 }
 
 // ============================================
@@ -651,23 +609,38 @@ void printHelp() {
   Serial.print(WS_Y_MAX); Serial.println(" cm");
   
   Serial.println("\n🎯 ESQUINAS PREDEFINIDAS:");
-  Serial.println("  c1 → (0.0, 0.0) cm");
-  Serial.println("  c2 → (8.5, 0.0) cm");
-  Serial.println("  c3 → (8.5, 5.8) cm");
-  Serial.println("  c4 → (0.0, 5.8) cm");
+  Serial.println("  c1 → (-5.0, -5.0) cm   Esquina inferior izquierda");
+  Serial.println("  c2 → (5.0, -5.0) cm    Esquina inferior derecha");
+  Serial.println("  c3 → (5.0, 5.0) cm     Esquina superior derecha");
+  Serial.println("  c4 → (-5.0, 5.0) cm    Esquina superior izquierda");
   
-  Serial.println("\n💡 COMANDOS:");
-  Serial.println("  xy X Y       → Mover a coordenadas XY (cm)");
-  Serial.println("                 Ejemplo: xy 4.25 2.9");
-  Serial.println("  c1/c2/c3/c4 → Ir a esquina predefinida");
-  Serial.println("  rect N       → Trayectoria rectangular (N puntos/lado)");
-  Serial.println("                 Ejemplo: rect 5");
-  Serial.println("  home / 0    → Centro (4.25, 2.9 cm)");
-  Serial.println("  status      → Ver estado actual");
-  Serial.println("  stop / s    → Detener movimiento");
-  Serial.println("  help / h    → Mostrar esta ayuda");
+  Serial.println("\n💡 COMANDOS DE MOVIMIENTO:");
+  Serial.println("  xy X Y          → Mover a coordenadas XY");
+  Serial.println("                    Ejemplo: xy 2.5 3.0");
+  Serial.println("  c1 / c2 / c3 / c4 → Ir a esquina predefinida");
+  Serial.println("  home            → Centro (0.0, 0.0 cm)");
+  Serial.println("  0               → Alias de home");
+  Serial.println("  rect N          → Trayectoria rectangular");
+  Serial.println("                    Ejemplo: rect 5 (5 puntos por lado)");
+  
+  Serial.println("\n🛑 CONTROL:");
+  Serial.println("  stop            → Detener movimiento actual");
+  Serial.println("  s               → Alias de stop");
+  
+  Serial.println("\n📊 INFORMACIÓN:");
+  Serial.println("  status          → Ver estado actual de motores y posición");
+  Serial.println("  help            → Mostrar esta ayuda");
+  Serial.println("  h               → Alias de help");
+  
   Serial.println("\n⚙  CONFIGURACIÓN:");
-  Serial.println("  reset       → Resetear encoders");
+  Serial.println("  reset           → Resetear contadores de encoders a 0");
+  
+  Serial.println("\n📌 NOTAS:");
+  Serial.println("  • Todos los comandos son case-insensitive");
+  Serial.println("  • Durante movimiento, escribe 'stop' para detener");
+  Serial.println("  • Las coordenadas XY están en centímetros");
+  Serial.println("  • Rango válido: X[-5 a 5 cm] Y[-5 a 5 cm]");
+  Serial.println("  • Origen (0,0) en el centro del workspace");
   Serial.println("════════════════════════════════════════════════════════");
 }
 
@@ -715,37 +688,48 @@ void processCommand(String cmd) {
   
   if (cmd.length() == 0) return;
   
+  Serial.print("\n➜ Comando recibido: '"); Serial.print(cmd); Serial.println("'");
+  
   if (cmd == "help" || cmd == "h") {
+    Serial.println("📖 Mostrando ayuda...");
     printHelp();
   }
   else if (cmd == "status") {
+    Serial.println("📊 Obteniendo estado del sistema...");
     printStatus();
   }
   else if (cmd == "stop" || cmd == "s") {
+    Serial.println("🛑 Deteniendo motores...");
     stopAllMotors();
     Serial.println("⚠  MOTORES DETENIDOS");
   }
   else if (cmd == "home" || cmd == "0") {
-    goToXY(4.25, 2.9);
-  }
-  else if (cmd == "c1") {
+    Serial.println("🏠 Moviendo a posición HOME (0.0, 0.0 cm)...");
     goToXY(0.0, 0.0);
   }
+  else if (cmd == "c1") {
+    Serial.println("🎯 Moviendo a esquina C1 (-5.0, -5.0 cm)...");
+    goToXY(-5.0, -5.0);
+  }
   else if (cmd == "c2") {
-    goToXY(8.5, 0.0);
+    Serial.println("🎯 Moviendo a esquina C2 (5.0, -5.0 cm)...");
+    goToXY(5.0, -5.0);
   }
   else if (cmd == "c3") {
-    goToXY(8.5, 5.8);
+    Serial.println("🎯 Moviendo a esquina C3 (5.0, 5.0 cm)...");
+    goToXY(5.0, 5.0);
   }
   else if (cmd == "c4") {
-    goToXY(0.0, 5.8);
+    Serial.println("🎯 Moviendo a esquina C4 (-5.0, 5.0 cm)...");
+    goToXY(-5.0, 5.0);
   }
   else if (cmd == "reset") {
+    Serial.println("🔄 Reseteando contadores de encoders...");
     noInterrupts();
     m1_encoderCount = 0;
     m2_encoderCount = 0;
     interrupts();
-    Serial.println("✓ Encoders reiniciados");
+    Serial.println("✓ Encoders reiniciados a 0");
   }
   else if (cmd.startsWith("xy ")) {
     int space1 = cmd.indexOf(' ');
@@ -754,6 +738,8 @@ void processCommand(String cmd) {
     if (space2 > 0) {
       float x = cmd.substring(space1 + 1, space2).toFloat();
       float y = cmd.substring(space2 + 1).toFloat();
+      Serial.print("📍 Moviendo a coordenadas XY (");
+      Serial.print(x, 2); Serial.print(", "); Serial.print(y, 2); Serial.println(" cm)...");
       goToXY(x, y);
     } else {
       Serial.println("❌ Formato: xy X Y (Ejemplo: xy 4.25 2.9)");
@@ -762,13 +748,19 @@ void processCommand(String cmd) {
   else if (cmd.startsWith("rect ")) {
     int space = cmd.indexOf(' ');
     int points = cmd.substring(space + 1).toInt();
-    rectangularPath(points);
+    if (points >= 2) {
+      Serial.print("📦 Iniciando trayectoria rectangular con ");
+      Serial.print(points); Serial.println(" puntos por lado...");
+      rectangularPath(points);
+    } else {
+      Serial.println("❌ Error: mínimo 2 puntos por lado (Ejemplo: rect 5)");
+    }
   }
   else {
     Serial.print("✗ Comando no reconocido: '");
     Serial.print(cmd);
     Serial.println("'");
-    Serial.println("  Escribe 'help' para ver comandos");
+    Serial.println("  Escribe 'help' para ver comandos disponibles");
   }
 }
 
