@@ -1890,7 +1890,7 @@ void setup() {
   Serial.println("    - Serial Handler (100ms, P:2)");
   Serial.println("========================================");
   Serial.println("[INFO] Fail-safe activado");
-  Serial.println("[INFO] Monitoreo UV/OV activo");
+  Serial.println("[INFO] Monitoreo UV/OV ac+tivo");
   Serial.println("[INFO] Deteccion de stall activa");
   Serial.println("[INFO] Modulo DSP operativo");
   Serial.println("========================================\n");
